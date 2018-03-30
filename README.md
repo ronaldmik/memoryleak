@@ -1,13 +1,13 @@
-Standalone JTA with Hibernate example.
+Memory Leak demonstration using 'Standalone JTA with Hibernate example'.
 ==================================================================================================
-Author: Gytis Trikleris;
+Author: Gytis Trikleris; Ronald Mik
 Level: Advanced;
 Technologies: JTA, CDI, JPA
 
 What is it?
 -----------
 
-This is an example demonstrating how to set up a standalone application which uses Narayana and Hibernate without the application server. It uses Weld to provide CDI capabilities, a standalone JNDI server, Hibernate, and Narayana with its transactional driver to enlist JDBC resources to the transaction.
+This is an example demonstrating a memory leak based on the JTA with Hibernate example made by Gytis Trikleris. The relating issue is: https://hibernate.atlassian.net/browse/HHH-12448
 
 
 System requirements
@@ -19,60 +19,12 @@ To build this project you need Java 8 (Java SDK 1.8) or better and Maven 3.3.3 o
 Usage
 -------------------------------
 
-In your terminal navigate to the quickstart directory and execute one of the following scenarios:
-
-### Commit demonstration
-
-    mvn clean package exec:java -Dexec.args="commit 'Test Value'"
+mvn clean exec:java
+OR
+run main in QuickStartApplication
 
 This example executes the following steps:
 
-    1. Prints already existing entries.
-    2. Begins a JTA transaction.
-    3. Saves entry to the database.
-    4. Commits the transaction
-    5. Prints all entries in the database.
-
-By the end, you should see one new entry returned from the database.
-    
-### Rollback demonstration
-
-    mvn clean package exec:java -Dexec.args="rollback 'Test Value'"
-     
- This example executes the following steps:
- 
-     1. Prints already existing entries.
-     2. Begins a JTA transaction.
-     3. Saves entry to the database.
-     4. Rolls back the transaction
-     5. Prints all entries in the database.
- 
- By the end, you should see that no new entry were added to the database.
-    
-### System crash and recovery demonstration
-
-    mvn clean package exec:java -Dexec.args="crash 'Test Value'"
-    
-This part of the example executes the following steps:
-
-    1. Prints already existing entries.
-    2. Begins a JTA transaction.
-    3. Enlists dummy XA resource.
-    4. Saves entry to the database.
-    5. Commits the transaction.
-    6. Dummy XA resource halts the system between prepare and commit phases.
-    
-    mvn exec:java -Dexec.args="recovery"
-    
-NOTE: don't execute clean and/or package steps here, because transaction recovery records will be lost.
-This part of the example executes the following steps:
-
-        1. Prints already existing entries.
-        2. Starts recovery manager thread.
-        3. Waits for the recovery to happen.
-        4. Prints all entries in the database.
-
-By the end, you should see dummy XA resource being committed and new entry returned from the database.
-        
-
-NOTE: GenericJDBCException visible in the examples is a known issue with hibernate failing to close the connection during the afterCompletion step. (https://issues.jboss.org/browse/JBTM-2676)
+    1. Does some work and flushes it. This will cause Envers to register a beforeCompletion and afterCompletion.
+    2. Register a beforeCompletion listener that will wait until the transaction has been rolled back (by the transaction reaper)
+    3. Print the size of the Map 'auditProcesses' in AuditProcessManager. This should be 0, yet it is 1 due to the memory leak. This is causeed by the fact that afterCompletion is already called by the reaper thread. The reaper thread registered a delayedAfterCompletion, which the 'normal' thread will normally execute. Yet because of locking in TwoPhaseCoordinator the delayedAfterCompletion has not yet been set by the reaper thread.
